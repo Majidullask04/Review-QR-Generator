@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import QRCode from 'qrcode'
+import { Link } from 'react-router-dom'
 import './App.css'
 
 const ALLOWED_DOMAINS = [
@@ -11,15 +12,12 @@ const ALLOWED_DOMAINS = [
 
 const getValidationMessage = (value) => {
   if (!value.trim()) return 'Please enter a Google review URL.'
-
   try {
     const url = new URL(value)
     const host = url.hostname.toLowerCase()
-
     if (!ALLOWED_DOMAINS.some((domain) => host.includes(domain))) {
       return 'Must be a valid Google Review URL.'
     }
-
     return ''
   } catch {
     return 'Please enter a valid URL.'
@@ -29,22 +27,20 @@ const getValidationMessage = (value) => {
 const getBusinessName = (value) => {
   try {
     const url = new URL(value)
-    const host = url.hostname
-      .replace(/^www\./i, '')
-      .replace(/[^a-z0-9-]/gi, '-')
-      .replace(/^-+|-+$/g, '')
-
-    return host || 'business'
+    const pathParts = url.pathname.split('/').filter(Boolean)
+    return pathParts[pathParts.length - 1] || url.hostname.replace(/^www\./i, '').split('.')[0]
   } catch {
     return 'business'
   }
 }
 
-const STORAGE_KEY = 'review-qr-history'
+const STORAGE_KEY = 'review-qr-history-v2'
 
 function App() {
   const [inputUrl, setInputUrl] = useState('')
+  const [businessName, setBusinessName] = useState('')
   const [qrData, setQrData] = useState('')
+  const [qrLink, setQrLink] = useState('')
   const [error, setError] = useState('')
   const [isGenerating, setIsGenerating] = useState(false)
   const [copied, setCopied] = useState(false)
@@ -52,11 +48,9 @@ function App() {
 
   useEffect(() => {
     try {
-      const savedHistory = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]')
-      setHistory(savedHistory)
-    } catch {
-      setHistory([])
-    }
+      const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]')
+      setHistory(saved)
+    } catch { setHistory([]) }
   }, [])
 
   useEffect(() => {
@@ -65,49 +59,40 @@ function App() {
 
   const updateInput = (value) => {
     setInputUrl(value)
-
-    if (!value.trim()) {
-      setError('')
-      return
-    }
-
+    setBusinessName(getBusinessName(value))
+    if (!value.trim()) { setError(''); return }
     setError(getValidationMessage(value))
   }
 
-  const addHistoryItem = (item) => {
-    setHistory((current) => [item, ...current].slice(0, 10))
-  }
-
-  async function generateQr() {
+  const generateQr = async () => {
     const trimmedUrl = inputUrl.trim()
     const validationMessage = getValidationMessage(trimmedUrl)
-
-    if (validationMessage) {
-      setError(validationMessage)
-      return
-    }
+    if (validationMessage) { setError(validationMessage); return }
 
     setError('')
     setIsGenerating(true)
 
     try {
-      const dataUrl = await QRCode.toDataURL(trimmedUrl, {
+      const businessId = btoa(trimmedUrl).replace(/[^a-zA-Z0-9]/g, '').slice(0, 12)
+      const baseUrl = window.location.origin
+      const reviewFlowUrl = `${baseUrl}/review/${businessId}?target=${encodeURIComponent(trimmedUrl)}&name=${encodeURIComponent(businessName || getBusinessName(trimmedUrl))}`
+
+      const dataUrl = await QRCode.toDataURL(reviewFlowUrl, {
         width: 400,
         margin: 2,
-        color: {
-          dark: '#1a73e8',
-          light: '#ffffff',
-        },
+        color: { dark: '#1a73e8', light: '#ffffff' },
       })
 
       setQrData(dataUrl)
-      addHistoryItem({
+      setQrLink(reviewFlowUrl)
+      setHistory(prev => [{
         id: `${Date.now()}`,
-        businessName: getBusinessName(trimmedUrl),
-        url: trimmedUrl,
+        businessName: businessName || getBusinessName(trimmedUrl),
+        googleUrl: trimmedUrl,
+        reviewFlowUrl,
         qrDataUrl: dataUrl,
         createdAt: Date.now(),
-      })
+      }, ...prev].slice(0, 10))
     } catch {
       setError('Failed to generate QR code. Please try again.')
       setQrData('')
@@ -116,84 +101,78 @@ function App() {
     }
   }
 
-  async function copyUrl() {
-    if (!inputUrl) return
-
+  const copyUrl = async () => {
+    if (!qrLink) return
     try {
-      await navigator.clipboard.writeText(inputUrl)
+      await navigator.clipboard.writeText(qrLink)
       setCopied(true)
-      window.setTimeout(() => setCopied(false), 1800)
-    } catch {
-      setCopied(false)
-    }
+      setTimeout(() => setCopied(false), 1800)
+    } catch { setCopied(false) }
   }
 
-  function handleDownload() {
+  const handleDownload = () => {
     if (!qrData) return
-
-    const filename = `${getBusinessName(inputUrl || qrData)}-qr.png`
     const link = document.createElement('a')
     link.href = qrData
-    link.download = filename
+    link.download = `${businessName || 'business'}-review-qr.png`
     link.click()
   }
 
-  function handleHistorySelect(item) {
-    setInputUrl(item.url)
+  const handleHistorySelect = (item) => {
+    setInputUrl(item.googleUrl)
+    setBusinessName(item.businessName)
     setQrData(item.qrDataUrl)
+    setQrLink(item.reviewFlowUrl)
     setError('')
-  }
-
-  function clearHistory() {
-    setHistory([])
   }
 
   return (
     <main className="page-shell">
       <section className="generator-card">
         <div className="hero-copy">
-          <p className="eyebrow">Google Review QR</p>
-          <h1>Turn any review link into a shareable QR code.</h1>
+          <p className="eyebrow">Review QR Generator v2</p>
+          <h1>AI-Powered Review QR Codes</h1>
           <p className="subtitle">
-            Generate a branded QR code for your Google Business Profile review link in under a second.
+            Customers scan → Rate with stars → Get AI-generated review → Post to Google.
+            No more blank-page anxiety.
           </p>
         </div>
 
         <div className="workspace-grid">
           <div className="panel input-panel">
-            <label className="field-label" htmlFor="reviewUrl">
-              Review URL
-            </label>
+            <label className="field-label" htmlFor="reviewUrl">Google Review URL</label>
             <input
               id="reviewUrl"
               type="url"
               value={inputUrl}
-              onChange={(event) => updateInput(event.target.value)}
-              placeholder="https://g.page/your-business"
+              onChange={(e) => updateInput(e.target.value)}
+              placeholder="https://g.page/your-business/review"
               className={error && inputUrl ? 'input invalid' : 'input'}
             />
-
             <div className="field-row">
-              <span className="helper-text">Accepts Google, g.page, and search URLs</span>
-              <button type="button" className="link-button" onClick={() => setInputUrl('https://g.page/your-business')}>
+              <span className="helper-text">Paste your Google Business review link</span>
+              <button type="button" className="link-button" onClick={() => updateInput('https://g.page/r/CW example')}>
                 Try sample
               </button>
             </div>
-
             {error && inputUrl && <p className="error-text">{error}</p>}
 
-            <div className="toolbar">
-              <button
-                type="button"
-                className="primary-button"
-                onClick={generateQr}
-                disabled={isGenerating || !inputUrl.trim()}
-              >
-                {isGenerating ? 'Generating...' : 'Generate QR'}
-              </button>
+            <label className="field-label" htmlFor="bizName" style={{marginTop: '16px'}}>Business Name (optional)</label>
+            <input
+              id="bizName"
+              type="text"
+              value={businessName}
+              onChange={(e) => setBusinessName(e.target.value)}
+              placeholder="e.g. Tony's Pizza"
+              className="input"
+            />
 
-              <button type="button" className="secondary-button" onClick={copyUrl} disabled={!inputUrl}>
-                {copied ? 'Copied!' : 'Copy link'}
+            <div className="toolbar">
+              <button type="button" className="primary-button" onClick={generateQr} disabled={isGenerating || !inputUrl.trim()}>
+                {isGenerating ? 'Generating...' : 'Generate Smart QR'}
+              </button>
+              <button type="button" className="secondary-button" onClick={copyUrl} disabled={!qrLink}>
+                {copied ? 'Copied!' : 'Copy QR Link'}
               </button>
             </div>
           </div>
@@ -203,46 +182,41 @@ function App() {
               {isGenerating ? (
                 <div className="spinner-wrap">
                   <div className="spinner" />
-                  <p>Creating your QR code…</p>
+                  <p>Creating smart QR...</p>
                 </div>
               ) : qrData ? (
-                <img src={qrData} alt="Generated Google review QR code" className="qr-image" />
+                <>
+                  <img src={qrData} alt="Generated review QR code" className="qr-image" />
+                  <p className="qr-caption">Scans open AI review helper</p>
+                </>
               ) : (
                 <div className="empty-state">
                   <div className="placeholder-qr" aria-hidden="true" />
-                  <p>No QR generated yet</p>
+                  <p>QR preview appears here</p>
                 </div>
               )}
             </div>
-
             <div className="preview-actions">
-              <button type="button" className="primary-button" onClick={handleDownload} disabled={!qrData}>
-                Download PNG
-              </button>
-              <button type="button" className="secondary-button" onClick={() => window.print()}>
-                Print
-              </button>
+              <button type="button" className="primary-button" onClick={handleDownload} disabled={!qrData}>Download PNG</button>
+              <button type="button" className="secondary-button" onClick={() => window.print()}>Print</button>
             </div>
           </div>
         </div>
 
         <div className="history-panel panel">
           <div className="history-header">
-            <h2>Recent QR codes</h2>
+            <h2>Recent QR Codes</h2>
             {history.length > 0 && (
-              <button type="button" className="link-button danger" onClick={clearHistory}>
-                Clear history
-              </button>
+              <button type="button" className="link-button danger" onClick={() => setHistory([])}>Clear</button>
             )}
           </div>
-
           {history.length === 0 ? (
             <p className="empty-history">Your generated QR history will appear here.</p>
           ) : (
             <div className="history-grid">
               {history.map((item) => (
                 <button key={item.id} type="button" className="history-item" onClick={() => handleHistorySelect(item)}>
-                  <img src={item.qrDataUrl} alt={`${item.businessName} QR preview`} />
+                  <img src={item.qrDataUrl} alt={`${item.businessName} preview`} />
                   <div>
                     <strong>{item.businessName}</strong>
                     <span>{new Date(item.createdAt).toLocaleDateString()}</span>
