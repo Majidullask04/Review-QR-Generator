@@ -53,3 +53,4 @@ This project is designed for generating QR codes for Google review links and sha
 
 - GitHub: https://github.com/Majidullask04/Review-QR-Generator
 
+# QR-review2.0
