@@ -47,6 +47,8 @@
   font-weight: 700;
   color: #1f2937;
   margin: 0 0 4px;
+  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
 .review-header p {
@@ -106,6 +108,8 @@
   font-weight: 700;
   color: #1f2937;
   margin: 0 0 8px;
+  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
 .step-subtitle {
@@ -241,6 +245,8 @@
   font-size: 14px;
   line-height: 1.5;
   color: #374151;
+  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
 /* Selected Review Box */
