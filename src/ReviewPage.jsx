@@ -1,8 +1,7 @@
-import { useState } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import './ReviewPage.css'
 
-// Type-specific context for AI
 const TYPE_CONTEXTS = {
   restaurant: 'a restaurant/cafe. Mention specific dishes, food quality, ambiance, service speed, cleanliness, and value for money.',
   salon: 'a salon/barber/spa. Mention haircut quality, staff skill, hygiene, waiting time, products used, and overall experience.',
@@ -15,6 +14,7 @@ const TYPE_CONTEXTS = {
 }
 
 const isGoogleReviewUrl = (value) => {
+  if (!value) return false
   try {
     const url = new URL(value)
     const host = url.hostname.toLowerCase()
@@ -28,39 +28,41 @@ const isGoogleReviewUrl = (value) => {
 const generateReviews = async (rating, businessName, businessType, customerContext, businessGuidance) => {
   const typeContext = TYPE_CONTEXTS[businessType] || TYPE_CONTEXTS.restaurant
   
-  try {
-    const res = await fetch('/api/gemini', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ 
-        rating, 
-        businessName,
-        businessType,
-        typeContext,
-        customerContext,
-        businessGuidance
-      })
+  const res = await fetch('/api/gemini', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ 
+      rating, 
+      businessName,
+      businessType,
+      typeContext,
+      customerContext,
+      businessGuidance
     })
-    if (!res.ok) throw new Error(`API Error: ${res.status}`)
-    const data = await res.json()
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '[]'
-    const parsed = JSON.parse(text)
-    return Array.isArray(parsed)
-      ? parsed.filter((item) => typeof item === 'string' && item.trim()).slice(0, 5)
-      : []
-  } catch (err) {
-    console.error('Gemini error:', err)
-    throw err
+  })
+  
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err.error || `API Error: ${res.status}`)
   }
+  
+  const data = await res.json()
+  // Now expects clean { reviews: [...] } from backend
+  const reviews = data.reviews || []
+  return Array.isArray(reviews)
+    ? reviews.filter((item) => typeof item === 'string' && item.trim()).slice(0, 5)
+    : []
 }
 
 function StarRating({ rating, setRating, interactive = true }) {
   return (
-    <div className="star-rating">
+    <div className="star-rating" role={interactive ? 'radiogroup' : undefined} aria-label="Star rating">
       {[1, 2, 3, 4, 5].map((star) => (
         <button
           key={star}
           type="button"
+          role="radio"
+          aria-checked={star <= rating}
           className={`star ${star <= rating ? 'filled' : ''} ${interactive ? 'interactive' : ''}`}
           onClick={() => interactive && setRating(star)}
           disabled={!interactive}
@@ -90,16 +92,28 @@ export default function ReviewPage() {
   const [error, setError] = useState('')
   const [customerContext, setCustomerContext] = useState('')
 
-  const copyText = async () => {
+  // Validate on mount
+  useEffect(() => {
+    if (!hasValidTarget && targetUrl) {
+      setError('Invalid review link. Please scan a valid QR code.')
+    }
+  }, [hasValidTarget, targetUrl])
+
+  const copyText = useCallback(async () => {
+    if (!selectedReview) return
     try {
       await navigator.clipboard.writeText(selectedReview)
       setCopied(true)
     } catch {
       setCopied(false)
     }
-  }
+  }, [selectedReview])
 
-  const handleRate = async (stars) => {
+  const handleRate = useCallback(async (stars) => {
+    if (!hasValidTarget) {
+      setError('Cannot generate review: invalid business link.')
+      return
+    }
     setRating(stars)
     setLoading(true)
     setError('')
@@ -108,36 +122,49 @@ export default function ReviewPage() {
       if (!generated.length) throw new Error('No review options returned')
       setReviews(generated)
       setStep(2)
-  } catch {
-      setError('Failed to generate reviews. Please try again.')
+    } catch (err) {
+      setError(err.message || 'Failed to generate reviews. Please try again.')
     } finally {
       setLoading(false)
     }
-  }
+  }, [hasValidTarget, businessName, businessType, customerContext, businessGuidance])
 
-  const handleSelectReview = (review) => {
+  const handleSelectReview = useCallback((review) => {
     setSelectedReview(review)
     setStep(3)
-  }
+  }, [])
 
-  const copyAndRedirect = async () => {
-    if (!hasValidTarget) return
-    const reviewWindow = window.open('', '_blank')
+  const copyAndRedirect = useCallback(async () => {
+    if (!hasValidTarget || !selectedReview) return
+    
+    // Try clipboard first, then open window to avoid popup blockers
+    let clipboardSuccess = false
     try {
       await navigator.clipboard.writeText(selectedReview)
       setCopied(true)
-      if (reviewWindow) reviewWindow.location.href = targetUrl
-      else window.open(targetUrl, '_blank', 'noopener,noreferrer')
+      clipboardSuccess = true
     } catch {
-      if (reviewWindow) reviewWindow.location.href = targetUrl
-      else window.open(targetUrl, '_blank', 'noopener,noreferrer')
+      clipboardSuccess = false
     }
-  }
+    
+    // Open Google Reviews
+    const openReview = () => {
+      window.open(targetUrl, '_blank', 'noopener,noreferrer')
+    }
+    
+    if (clipboardSuccess) {
+      openReview()
+    } else {
+      // If clipboard failed, still open the review page so user can manually paste
+      openReview()
+      setError('Could not auto-copy. Please copy the review manually.')
+    }
+  }, [hasValidTarget, selectedReview, targetUrl])
 
-  const goBack = () => {
+  const goBack = useCallback(() => {
     if (step === 3) { setStep(2); setSelectedReview('') }
     else if (step === 2) { setStep(1); setRating(0); setReviews([]) }
-  }
+  }, [step])
 
   return (
     <div className="review-page">
@@ -148,7 +175,7 @@ export default function ReviewPage() {
           <p>Share your real experience with others</p>
         </div>
 
-        <div className="progress-bar">
+        <div className="progress-bar" aria-hidden="true">
           <div className={`progress-step ${step >= 1 ? 'active' : ''}`}>1</div>
           <div className={`progress-line ${step >= 2 ? 'active' : ''}`} />
           <div className={`progress-step ${step >= 2 ? 'active' : ''}`}>2</div>
@@ -166,12 +193,14 @@ export default function ReviewPage() {
                 {rating === 5 ? 'Excellent!' : rating === 4 ? 'Very Good' : rating === 3 ? 'Good' : rating === 2 ? 'Fair' : 'Poor'}
               </p>
             )}
-            <label className="context-label" htmlFor="customerContext">What would you like to mention? <span>Optional, but makes the draft more personal</span></label>
+            <label className="context-label" htmlFor="customerContext">
+              What would you like to mention? <span>Optional, but makes the draft more personal</span>
+            </label>
             <textarea
               id="customerContext"
               className="experience-input"
-              rows="4"
-              maxLength="600"
+              rows={4}
+              maxLength={600}
               value={customerContext}
               onChange={(e) => setCustomerContext(e.target.value.slice(0, 600))}
               placeholder="e.g. I tried the ramen, our server was Sam, and the wait was about 10 minutes"
@@ -183,7 +212,7 @@ export default function ReviewPage() {
                 <p>AI is writing your {businessType} review options...</p>
               </div>
             )}
-            {error && <p className="error-text">{error} Please check your notes and try again.</p>}
+            {error && <p className="error-text" role="alert">{error}</p>}
           </div>
         )}
 
@@ -220,17 +249,23 @@ export default function ReviewPage() {
             <h2>Almost done!</h2>
             <p className="step-subtitle">Your review is ready to paste</p>
             <label className="context-label" htmlFor="selectedReview">Edit your review before posting</label>
-            <textarea id="selectedReview" className="experience-input selected-review-input" rows="5" value={selectedReview} onChange={(e) => setSelectedReview(e.target.value.slice(0, 500))} />
+            <textarea 
+              id="selectedReview" 
+              className="experience-input selected-review-input" 
+              rows={5} 
+              value={selectedReview} 
+              onChange={(e) => setSelectedReview(e.target.value.slice(0, 500))} 
+            />
             <div className="action-buttons">
               <button className="primary-button large" onClick={copyAndRedirect} disabled={!hasValidTarget}>
-                <span className="btn-icon">📋</span>
+                <span className="btn-icon" aria-hidden="true">📋</span>
                 {copied ? 'Copied! Open Google Reviews →' : 'Copy Review & Open Google'}
               </button>
               <button className="secondary-button" onClick={copyText}>
                 Copy Text Only
               </button>
             </div>
-            {!hasValidTarget && <p className="error-text">This review link is invalid. Please ask the business for a new QR code.</p>}
+            {!hasValidTarget && <p className="error-text" role="alert">This review link is invalid. Please ask the business for a new QR code.</p>}
             {copied && (
               <div className="success-hint">
                 <p>✅ Review copied! Paste it on the Google page that just opened.</p>
