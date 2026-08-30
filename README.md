@@ -1,6 +1,6 @@
 # Review QR Generator
 
-A simple React + Vite app that generates Google review QR codes from review links and lets users download them as PNG files.
+A React + Vite app that generates Google review QR codes from review links and opens a truthful, AI-assisted review drafting flow.
 
 ## Features
 
@@ -12,6 +12,9 @@ A simple React + Vite app that generates Google review QR codes from review link
 - View recent QR history saved in localStorage
 - Responsive layout for mobile and desktop
 - Print-friendly QR preview
+- Optional business guidance embedded in each QR flow
+- Customer-provided experience notes used to create varied, editable AI drafts
+- Server-side Gemini API proxy so the API key is never shipped to the browser
 
 ## Tech Stack
 
@@ -26,6 +29,8 @@ A simple React + Vite app that generates Google review QR codes from review link
 npm install
 npm run dev
 ```
+
+For AI generation, configure `GEMINI_API_KEY` in the deployment environment. Without it, review generation is unavailable rather than producing made-up testimonials.
 
 Then open the local URL shown in the terminal, usually:
 
@@ -47,7 +52,7 @@ npm run preview
 
 ## Notes
 
-This project is designed for generating QR codes for Google review links and sharing them with customers quickly.
+The AI is instructed to use only the customer's notes and optional business guidance. Customers should review and edit the draft so it reflects their real experience. The Vercel function lives at `api/gemini.js` and keeps the Gemini credential server-side.
 
 ## Repository
 

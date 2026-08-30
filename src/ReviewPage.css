@@ -163,6 +163,48 @@
   min-height: 28px;
 }
 
+.context-label {
+  display: block;
+  margin: 24px 0 8px;
+  text-align: left;
+  color: #374151;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.context-label span {
+  display: block;
+  margin-top: 3px;
+  color: #9ca3af;
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.experience-input {
+  width: 100%;
+  resize: vertical;
+  border: 1px solid #d1d5db;
+  border-radius: 12px;
+  padding: 12px;
+  color: #1f2937;
+  font: inherit;
+  text-align: left;
+}
+
+.experience-input:focus {
+  outline: none;
+  border-color: #667eea;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.14);
+}
+
+.truth-note {
+  margin: 8px 0 0;
+  color: #6b7280;
+  font-size: 12px;
+  line-height: 1.45;
+  text-align: left;
+}
+
 /* Reviews List */
 .step-header-row {
   display: flex;
@@ -257,6 +299,13 @@
   padding: 20px;
   margin: 20px 0;
   text-align: left;
+}
+
+.selected-review-input {
+  margin-top: 4px;
+  min-height: 130px;
+  background: #fffbeb;
+  border-color: #fbbf24;
 }
 
 .selected-review-box p {

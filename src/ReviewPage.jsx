@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useParams, useSearchParams } from 'react-router-dom'
+import { useSearchParams } from 'react-router-dom'
 import './ReviewPage.css'
 
 // Type-specific context for AI
@@ -14,7 +14,18 @@ const TYPE_CONTEXTS = {
   education: 'a school/tutoring center. Mention teaching quality, course material, instructor knowledge, facility, and value for money.',
 }
 
-const generateReviews = async (rating, businessName, businessType) => {
+const isGoogleReviewUrl = (value) => {
+  try {
+    const url = new URL(value)
+    const host = url.hostname.toLowerCase()
+    return ['google.com', 'g.page', 'search.google.com', 'business.google.com']
+      .some((domain) => host === domain || host.endsWith(`.${domain}`))
+  } catch {
+    return false
+  }
+}
+
+const generateReviews = async (rating, businessName, businessType, customerContext, businessGuidance) => {
   const typeContext = TYPE_CONTEXTS[businessType] || TYPE_CONTEXTS.restaurant
   
   try {
@@ -25,98 +36,22 @@ const generateReviews = async (rating, businessName, businessType) => {
         rating, 
         businessName,
         businessType,
-        typeContext
+        typeContext,
+        customerContext,
+        businessGuidance
       })
     })
     if (!res.ok) throw new Error(`API Error: ${res.status}`)
     const data = await res.json()
     const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '[]'
-    const match = text.match(/\[[\s\S]*\]/)
-    return match ? JSON.parse(match[0]) : []
+    const parsed = JSON.parse(text)
+    return Array.isArray(parsed)
+      ? parsed.filter((item) => typeof item === 'string' && item.trim()).slice(0, 5)
+      : []
   } catch (err) {
     console.error('Gemini error:', err)
-    return getFallbackReviews(rating, businessName, businessType)
+    throw err
   }
-}
-
-// Realistic fallback reviews per type
-function getFallbackReviews(rating, businessName, type) {
-  const fallbacks = {
-    restaurant: {
-      5: [
-        `The butter chicken at ${businessName} was absolutely incredible! Perfect spice level and the garlic naan was fresh off the tandoor. Already planning my next visit.`,
-        `Best biryani I've had in ages. ${businessName} nails the authentic flavors. The staff recommended the perfect wine pairing too. 10/10!`,
-        `Hidden gem! The wood-fired pizzas at ${businessName} have that perfect char. Fresh ingredients, generous toppings, and the tiramisu is homemade.`,
-        `Amazing family dinner at ${businessName}. The thali was loaded with variety, everything tasted fresh. Service was warm and attentive.`,
-        `Outstanding! The sushi at ${businessName} was melt-in-your-mouth fresh. The chef's special roll is a must-try. Worth every penny.`
-      ],
-      4: [
-        `Really enjoyed the pasta at ${businessName}. The carbonara was creamy and authentic. Only wish the bread basket was refilled faster.`,
-        `Solid choice for brunch. ${businessName} has great pancakes and the coffee is strong. Gets busy on weekends so come early!`,
-        `Good food and nice vibes at ${businessName}. The burger was juicy and fries were crispy. Service could be a touch quicker but overall great.`,
-        `Pleasant surprise! ${businessName} delivered quality steaks at fair prices. The mashed potatoes were buttery perfection.`
-      ],
-      3: [
-        `Decent meal at ${businessName}. The food was okay but nothing memorable. Might try a different dish next time.`,
-        `Average experience at ${businessName}. Some dishes were good, others bland. Prices a bit high for the quality.`
-      ],
-      2: [
-        `Disappointed with ${businessName}. Food took 45 mins and arrived cold. The manager didn't even apologize.`,
-        `Below average. ${businessName} needs to work on food quality and kitchen speed. Won't be returning soon.`
-      ],
-      1: [
-        `Terrible experience at ${businessName}. Found hair in my food, staff was rude, and they overcharged us. Avoid at all costs.`,
-        `Worst meal ever. ${businessName} was dirty, the food tasted old, and the server ignored us. Never again.`
-      ]
-    },
-    salon: {
-      5: [
-        `Best haircut I've had in years! The stylist at ${businessName} actually listened to what I wanted. The scalp massage during wash was heavenly.`,
-        `Amazing color job at ${businessName}! My highlights look so natural. The staff is knowledgeable and the salon is spotless.`,
-        `Love this place! The facial at ${businessName} left my skin glowing for days. Professional, hygienic, and relaxing atmosphere.`,
-        `The beard trim at ${businessName} is top-notch. Precise lines, hot towel treatment, and great conversation. My new go-to barber.`
-      ],
-      4: [
-        `Great haircut at ${businessName}. The stylist understood my reference photo perfectly. Slightly pricey but quality work.`,
-        `Nice salon experience. ${businessName} has skilled staff and good products. Waited 15 mins past my appointment though.`
-      ],
-      3: [
-        `Okay haircut, nothing special. ${businessName} was clean but the stylist seemed rushed. Average value for money.`
-      ],
-      2: [
-        `Rushed service at ${businessName}. The haircut was uneven and they didn't even style it at the end. Disappointing.`
-      ],
-      1: [
-        `Worst salon experience. The stylist at ${businessName} completely ignored my instructions and damaged my hair. Never going back.`
-      ]
-    },
-    gym: {
-      5: [
-        `Best gym in the area! ${businessName} has top-tier equipment, never too crowded, and the trainers actually care about your form.`,
-        `Transformed my fitness at ${businessName}. The group classes are energetic, lockers are clean, and the protein bar is reasonably priced.`,
-        `Love the 24/7 access at ${businessName}. Equipment is well-maintained, showers are clean, and the community is motivating.`
-      ],
-      4: [
-        `Good gym with solid equipment. ${businessName} has everything I need for my routine. Could use more squat racks during peak hours.`,
-        `Nice facility at ${businessName}. Clean, organized, and friendly staff. Membership is a bit steep but the amenities justify it.`
-      ],
-      3: [
-        `Average gym. ${businessName} has basic equipment but some machines are old. Gets too crowded after 6pm.`
-      ],
-      2: [
-        `Disappointing. ${businessName} has broken equipment that stays unfixed for weeks. AC doesn't work properly either.`
-      ],
-      1: [
-        `Terrible gym. ${businessName} charged me hidden fees, equipment is unsafe, and the staff is unhelpful. Canceling my membership.`
-      ]
-    }
-  }
-  
-  const typeFallbacks = fallbacks[type] || fallbacks.restaurant
-  const reviews = typeFallbacks[rating] || typeFallbacks[3] || ['Good experience.', 'Nice place.']
-  
-  // Shuffle the array and return up to 4 items so it's different every time
-  return [...reviews].sort(() => Math.random() - 0.5).slice(0, 4)
 }
 
 function StarRating({ rating, setRating, interactive = true }) {
@@ -129,6 +64,7 @@ function StarRating({ rating, setRating, interactive = true }) {
           className={`star ${star <= rating ? 'filled' : ''} ${interactive ? 'interactive' : ''}`}
           onClick={() => interactive && setRating(star)}
           disabled={!interactive}
+          aria-label={`${star} star${star === 1 ? '' : 's'}`}
         >
           ★
         </button>
@@ -138,11 +74,12 @@ function StarRating({ rating, setRating, interactive = true }) {
 }
 
 export default function ReviewPage() {
-  const { businessId } = useParams()
   const [searchParams] = useSearchParams()
   const targetUrl = searchParams.get('target') || ''
   const businessName = searchParams.get('name') || 'this business'
   const businessType = searchParams.get('type') || 'restaurant'
+  const businessGuidance = searchParams.get('guidance') || ''
+  const hasValidTarget = isGoogleReviewUrl(targetUrl)
 
   const [step, setStep] = useState(1)
   const [rating, setRating] = useState(0)
@@ -151,16 +88,27 @@ export default function ReviewPage() {
   const [loading, setLoading] = useState(false)
   const [copied, setCopied] = useState(false)
   const [error, setError] = useState('')
+  const [customerContext, setCustomerContext] = useState('')
+
+  const copyText = async () => {
+    try {
+      await navigator.clipboard.writeText(selectedReview)
+      setCopied(true)
+    } catch {
+      setCopied(false)
+    }
+  }
 
   const handleRate = async (stars) => {
     setRating(stars)
     setLoading(true)
     setError('')
     try {
-      const generated = await generateReviews(stars, businessName, businessType)
+      const generated = await generateReviews(stars, businessName, businessType, customerContext, businessGuidance)
+      if (!generated.length) throw new Error('No review options returned')
       setReviews(generated)
       setStep(2)
-    } catch (err) {
+  } catch {
       setError('Failed to generate reviews. Please try again.')
     } finally {
       setLoading(false)
@@ -173,12 +121,16 @@ export default function ReviewPage() {
   }
 
   const copyAndRedirect = async () => {
+    if (!hasValidTarget) return
+    const reviewWindow = window.open('', '_blank')
     try {
       await navigator.clipboard.writeText(selectedReview)
       setCopied(true)
-      window.open(targetUrl, '_blank')
+      if (reviewWindow) reviewWindow.location.href = targetUrl
+      else window.open(targetUrl, '_blank', 'noopener,noreferrer')
     } catch {
-      window.open(targetUrl, '_blank')
+      if (reviewWindow) reviewWindow.location.href = targetUrl
+      else window.open(targetUrl, '_blank', 'noopener,noreferrer')
     }
   }
 
@@ -193,7 +145,7 @@ export default function ReviewPage() {
         <div className="review-header">
           <div className="logo-mark">★</div>
           <h1>{businessName}</h1>
-          <p>Help others by sharing your experience</p>
+          <p>Share your real experience with others</p>
         </div>
 
         <div className="progress-bar">
@@ -214,13 +166,24 @@ export default function ReviewPage() {
                 {rating === 5 ? 'Excellent!' : rating === 4 ? 'Very Good' : rating === 3 ? 'Good' : rating === 2 ? 'Fair' : 'Poor'}
               </p>
             )}
+            <label className="context-label" htmlFor="customerContext">What would you like to mention? <span>Optional, but makes the draft more personal</span></label>
+            <textarea
+              id="customerContext"
+              className="experience-input"
+              rows="4"
+              maxLength="600"
+              value={customerContext}
+              onChange={(e) => setCustomerContext(e.target.value.slice(0, 600))}
+              placeholder="e.g. I tried the ramen, our server was Sam, and the wait was about 10 minutes"
+            />
+            <p className="truth-note">The AI only uses details you provide. Please review and edit the draft so it reflects your real experience.</p>
             {loading && (
               <div className="loading-state">
                 <div className="spinner small" />
                 <p>AI is writing your {businessType} review options...</p>
               </div>
             )}
-            {error && <p className="error-text">{error}</p>}
+            {error && <p className="error-text">{error} Please check your notes and try again.</p>}
           </div>
         )}
 
@@ -256,18 +219,18 @@ export default function ReviewPage() {
             </div>
             <h2>Almost done!</h2>
             <p className="step-subtitle">Your review is ready to paste</p>
-            <div className="selected-review-box">
-              <p>{selectedReview}</p>
-            </div>
+            <label className="context-label" htmlFor="selectedReview">Edit your review before posting</label>
+            <textarea id="selectedReview" className="experience-input selected-review-input" rows="5" value={selectedReview} onChange={(e) => setSelectedReview(e.target.value.slice(0, 500))} />
             <div className="action-buttons">
-              <button className="primary-button large" onClick={copyAndRedirect}>
+              <button className="primary-button large" onClick={copyAndRedirect} disabled={!hasValidTarget}>
                 <span className="btn-icon">📋</span>
                 {copied ? 'Copied! Open Google Reviews →' : 'Copy Review & Open Google'}
               </button>
-              <button className="secondary-button" onClick={() => {navigator.clipboard.writeText(selectedReview); setCopied(true)}}>
+              <button className="secondary-button" onClick={copyText}>
                 Copy Text Only
               </button>
             </div>
+            {!hasValidTarget && <p className="error-text">This review link is invalid. Please ask the business for a new QR code.</p>}
             {copied && (
               <div className="success-hint">
                 <p>✅ Review copied! Paste it on the Google page that just opened.</p>

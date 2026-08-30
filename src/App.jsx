@@ -2,7 +2,6 @@ import { useEffect, useState, useRef } from 'react'
 import QRCode from 'qrcode'
 import QRCodeStyling from 'qr-code-styling'
 import html2canvas from 'html2canvas'
-import { Link } from 'react-router-dom'
 import './App.css'
 
 const ALLOWED_DOMAINS = [
@@ -26,7 +25,7 @@ const getValidationMessage = (value) => {
   try {
     const url = new URL(value)
     const host = url.hostname.toLowerCase()
-    if (!ALLOWED_DOMAINS.some((domain) => host.includes(domain))) {
+    if (!ALLOWED_DOMAINS.some((domain) => host === domain || host.endsWith(`.${domain}`))) {
       return 'Must be a valid Google Review URL.'
     }
     return ''
@@ -35,29 +34,31 @@ const getValidationMessage = (value) => {
   }
 }
 
-const getBusinessName = (value) => {
+const STORAGE_KEY = 'review-qr-history-v3'
+const MAX_HISTORY_ITEMS = 10
+
+const readHistory = () => {
   try {
-    const url = new URL(value)
-    const pathParts = url.pathname.split('/').filter(Boolean)
-    return pathParts[pathParts.length - 1] || url.hostname.replace(/^www\./i, '').split('.')[0]
+    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]')
+    if (!Array.isArray(saved)) return []
+    return saved.filter((item) => item && typeof item === 'object' && item.id && item.googleUrl && item.reviewFlowUrl && item.qrDataUrl)
+      .slice(0, MAX_HISTORY_ITEMS)
   } catch {
-    return 'business'
+    return []
   }
 }
-
-const STORAGE_KEY = 'review-qr-history-v3'
 
 function App() {
   const [inputUrl, setInputUrl] = useState('')
   const [businessName, setBusinessName] = useState('')
   const [businessType, setBusinessType] = useState('restaurant')
   const [customType, setCustomType] = useState('')
-  const [qrData, setQrData] = useState('') // For history thumbnails
+  const [reviewGuidance, setReviewGuidance] = useState('')
   const [qrLink, setQrLink] = useState('')
   const [error, setError] = useState('')
   const [isGenerating, setIsGenerating] = useState(false)
   const [copied, setCopied] = useState(false)
-  const [history, setHistory] = useState([])
+  const [downloadError, setDownloadError] = useState('')
   const posterRef = useRef(null)
   const qrRef = useRef(null)
   
@@ -86,15 +87,12 @@ function App() {
     }
   }))
 
-  useEffect(() => {
-    try {
-      const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]')
-      setHistory(saved)
-    } catch { setHistory([]) }
-  }, [])
+  const [history, setHistory] = useState(() => {
+    return readHistory()
+  })
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(history))
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(history)) } catch { /* History is optional. */ }
   }, [history])
 
   // Update dotted QR canvas when qrLink changes
@@ -108,19 +106,20 @@ function App() {
 
   const updateInput = (value) => {
     setInputUrl(value)
-    setBusinessName(getBusinessName(value))
     if (!value.trim()) { setError(''); return }
     setError(getValidationMessage(value))
   }
 
   const getFinalBusinessType = () => {
-    return businessType === 'other' ? customType : businessType
+    return businessType === 'other' ? customType.trim() : businessType
   }
 
   const generateQr = async () => {
     const trimmedUrl = inputUrl.trim()
     const validationMessage = getValidationMessage(trimmedUrl)
     if (validationMessage) { setError(validationMessage); return }
+    if (!getFinalBusinessType()) { setError('Please enter your business type.'); return }
+    if (!businessName.trim()) { setError('Please enter your business name.'); return }
 
     setError('')
     setIsGenerating(true)
@@ -130,19 +129,19 @@ function App() {
       const baseUrl = window.location.origin
       const finalType = getFinalBusinessType()
       
-      const reviewFlowUrl = `${baseUrl}/review/${businessId}?target=${encodeURIComponent(trimmedUrl)}&name=${encodeURIComponent(businessName || getBusinessName(trimmedUrl))}&type=${encodeURIComponent(finalType)}`
+      const safeBusinessName = businessName.trim().slice(0, 120)
+      const reviewFlowUrl = `${baseUrl}/review/${businessId}?target=${encodeURIComponent(trimmedUrl)}&name=${encodeURIComponent(safeBusinessName)}&type=${encodeURIComponent(finalType)}&guidance=${encodeURIComponent(reviewGuidance.trim().slice(0, 500))}`
 
       // Generate a small basic QR for the history panel thumbnail
       const thumbDataUrl = await QRCode.toDataURL(reviewFlowUrl, {
         width: 100, margin: 1, color: { dark: '#000', light: '#fff' }
       })
 
-      setQrData(thumbDataUrl)
       setQrLink(reviewFlowUrl)
       
       setHistory(prev => [{
         id: `${Date.now()}`,
-        businessName: businessName || getBusinessName(trimmedUrl),
+        businessName: safeBusinessName,
         businessType: finalType,
         googleUrl: trimmedUrl,
         reviewFlowUrl,
@@ -151,7 +150,6 @@ function App() {
       }, ...prev].slice(0, 10))
     } catch {
       setError('Failed to generate QR code. Please try again.')
-      setQrData('')
     } finally {
       setIsGenerating(false)
     }
@@ -168,14 +166,15 @@ function App() {
 
   const handleDownload = async () => {
     if (!qrLink || !posterRef.current) return
+    setDownloadError('')
     try {
       const canvas = await html2canvas(posterRef.current, { scale: 3, backgroundColor: null, useCORS: true })
       const link = document.createElement('a')
       link.href = canvas.toDataURL('image/png')
-      link.download = `${businessName || 'business'}-google-poster.png`
+      link.download = `${(businessName || 'business').replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '').toLowerCase() || 'business'}-google-poster.png`
       link.click()
-    } catch (err) {
-      console.error('Download failed', err)
+    } catch {
+      setDownloadError('Download failed. Please use Print or try again.')
     }
   }
 
@@ -183,7 +182,6 @@ function App() {
     setInputUrl(item.googleUrl)
     setBusinessName(item.businessName)
     setBusinessType(item.businessType)
-    setQrData(item.qrDataUrl)
     setQrLink(item.reviewFlowUrl)
     setError('')
   }
@@ -195,7 +193,7 @@ function App() {
           <p className="eyebrow">Review QR Generator v4</p>
           <h1>AI-Powered Review QR Codes</h1>
           <p className="subtitle">
-            Tell us your business type → AI writes realistic, specific reviews → Customers post with confidence.
+            Create a QR flow where customers can turn their real experience into an editable review draft.
           </p>
         </div>
 
@@ -224,9 +222,11 @@ function App() {
               type="text"
               value={businessName}
               onChange={(e) => setBusinessName(e.target.value)}
-              placeholder="e.g. Tony's Pizza"
+              placeholder="Enter the name customers should see"
+              maxLength="120"
               className="input"
             />
+            <p className="field-note">Enter this manually so short Google links cannot fill in the wrong name.</p>
 
             <label className="field-label" style={{marginTop: '16px'}}>What type of business is this?</label>
             <div className="business-type-grid">
@@ -253,6 +253,18 @@ function App() {
               />
             )}
 
+            <label className="field-label" htmlFor="reviewGuidance" style={{marginTop: '16px'}}>Optional review guidance</label>
+            <textarea
+              id="reviewGuidance"
+              value={reviewGuidance}
+              onChange={(e) => setReviewGuidance(e.target.value.slice(0, 500))}
+              placeholder="What should customers remember? e.g. mention our weekend brunch or Maya at reception"
+              className="input guidance-input"
+              rows="3"
+              maxLength="500"
+            />
+            <p className="field-note">This gives the AI useful context. Customers will still be asked for their own experience.</p>
+
             <div className="toolbar">
               <button type="button" className="primary-button" onClick={generateQr} disabled={isGenerating || !inputUrl.trim()}>
                 {isGenerating ? 'Generating...' : 'Generate Smart QR'}
@@ -276,12 +288,8 @@ function App() {
                     <div className="wave wave-top-right"></div>
                     <div className="wave wave-bottom-left"></div>
                     
-                    <div className="floating-icon icon-left">
-                      <img src="https://upload.wikimedia.org/wikipedia/commons/5/53/Google_%22G%22_Logo.svg" alt="Google" />
-                    </div>
-                    <div className="floating-icon icon-right">
-                      <img src="https://upload.wikimedia.org/wikipedia/commons/a/aa/Google_Maps_icon_%282020%29.svg" alt="Google Maps" />
-                    </div>
+                    <div className="floating-icon icon-left g-blue" aria-hidden="true">G</div>
+                    <div className="floating-icon icon-right" aria-hidden="true">📍</div>
 
                     <div className="poster-content-g">
                       <div className="feedback-badge">
@@ -314,7 +322,7 @@ function App() {
                     <div className="google-footer">
                       <div className="footer-business-info">
                         <div className="gmb-icon">
-                          <img src="https://upload.wikimedia.org/wikipedia/commons/a/aa/Google_Maps_icon_%282020%29.svg" alt="GMB" />
+                          <span className="gmb-letter" aria-hidden="true">G</span>
                         </div>
                         <div className="b-details">
                           <div className="b-name">{businessName || 'Your Business Name'}</div>
@@ -338,6 +346,7 @@ function App() {
               <button type="button" className="primary-button" onClick={handleDownload} disabled={!qrLink}>Download PNG</button>
               <button type="button" className="secondary-button" onClick={() => window.print()}>Print</button>
             </div>
+            {downloadError && <p className="error-text">{downloadError}</p>}
           </div>
         </div>
 
