@@ -9,40 +9,56 @@ const stripControl = (v) =>
     .join('');
 
 export default async function handler(req, res) {
+  // ── CORS FIRST ──
   try {
-    // ── CORS ──
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  } catch (e) {
+    return res.status(500).end();
+  }
 
-    if (req.method === 'OPTIONS') return res.status(204).end();
-    if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+  if (req.method === 'OPTIONS') return res.status(204).end();
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-    // ── Validate Input ──
-    const body = req.body || {};
-    const { rating, businessName, businessType, typeContext, customerContext, businessGuidance } = body;
-    const numericRating = Number(rating);
-
-    if (!Number.isInteger(numericRating) || numericRating < 1 || numericRating > 5) {
-      return res.status(400).json({ error: 'Rating must be 1-5.' });
+  // ── PARSE BODY SAFELY ──
+  let body = {};
+  try {
+    if (typeof req.body === 'string') {
+      body = JSON.parse(req.body);
+    } else if (Buffer.isBuffer(req.body)) {
+      body = JSON.parse(req.body.toString());
+    } else if (typeof req.body === 'object' && req.body !== null) {
+      body = req.body;
     }
-    if (!businessName?.trim() || businessName.length > 120) {
-      return res.status(400).json({ error: 'Business name required (max 120 chars).' });
-    }
+  } catch (e) {
+    console.error('Body parse error:', e.message);
+    return res.status(400).json({ error: 'Invalid JSON body.' });
+  }
 
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      console.error('GEMINI_API_KEY missing');
-      return res.status(503).json({ error: 'AI service not configured.' });
-    }
+  const { rating, businessName, businessType, typeContext, customerContext, businessGuidance } = body;
+  const numericRating = Number(rating);
 
-    // ── Build Prompt ──
-    const cleanName = stripControl(businessName.trim());
-    const cleanType = stripControl((typeContext || businessType || 'local business').trim());
-    const cleanCustomer = stripControl((customerContext || '').trim());
-    const cleanGuidance = stripControl((businessGuidance || '').trim());
+  if (!Number.isInteger(numericRating) || numericRating < 1 || numericRating > 5) {
+    return res.status(400).json({ error: 'Rating must be 1-5.' });
+  }
+  if (!businessName?.trim() || businessName.length > 120) {
+    return res.status(400).json({ error: 'Business name required (max 120 chars).' });
+  }
 
-    const prompt = `You are helping a customer draft a review for the business named below.
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    console.error('GEMINI_API_KEY missing');
+    return res.status(503).json({ error: 'AI service not configured.' });
+  }
+
+  // ── BUILD PROMPT ──
+  const cleanName = stripControl(businessName.trim());
+  const cleanType = stripControl((typeContext || businessType || 'local business').trim());
+  const cleanCustomer = stripControl((customerContext || '').trim());
+  const cleanGuidance = stripControl((businessGuidance || '').trim());
+
+  const prompt = `You are helping a customer draft a review for the business named below.
 
 Write ${numericRating >= 4 ? '5' : '4'} authentic Google review drafts.
 
@@ -63,8 +79,15 @@ Business guidance: <business_guidance>${cleanGuidance || '(none provided)'}</bus
 
 Return ONLY a JSON array of strings. No markdown, no explanation.`;
 
-    // ── Call Gemini ──
-    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+  // ── CALL GEMINI ──
+  const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey.trim()}`;
+
+  try {
+    // Ensure fetch exists
+    if (typeof fetch !== 'function') {
+      console.error('fetch is not available in this runtime');
+      return res.status(500).json({ error: 'Runtime error: fetch unavailable' });
+    }
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 8000);
@@ -100,11 +123,10 @@ Return ONLY a JSON array of strings. No markdown, no explanation.`;
 
     const geminiData = await geminiRes.json();
     
-    // ── Parse Response ──
+    // ── PARSE RESPONSE ──
     let reviews = [];
     let rawText = geminiData.candidates?.[0]?.content?.parts?.[0]?.text;
 
-    // Some Gemini configs return array directly
     if (!rawText && Array.isArray(geminiData)) {
       reviews = geminiData.filter(item => typeof item === 'string').slice(0, 5);
     }
@@ -126,14 +148,14 @@ Return ONLY a JSON array of strings. No markdown, no explanation.`;
     }
 
     if (!reviews.length) {
-      console.error('Empty reviews. Response:', JSON.stringify(geminiData).slice(0, 300));
+      console.error('Empty reviews. Response snippet:', JSON.stringify(geminiData).slice(0, 400));
       return res.status(502).json({ error: 'AI returned empty response.' });
     }
 
     return res.status(200).json({ reviews });
 
   } catch (err) {
-    console.error('FATAL:', err.name, err.message);
-    return res.status(500).json({ error: 'Server error. Check Vercel logs.' });
+    console.error('FATAL API ERROR:', err.name, err.message, err.stack);
+    return res.status(500).json({ error: 'Server error. Please retry.' });
   }
 }
