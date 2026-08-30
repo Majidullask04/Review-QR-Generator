@@ -5,6 +5,8 @@ export default async function handler(req, res) {
   
   const { rating, businessName, businessType, typeContext } = req.body;
   
+  const randomSeed = Math.floor(Math.random() * 1000000);
+  
   const prompt = `You are a real customer who just visited ${businessName}, which is ${typeContext || 'a local business'}.
 
 Write ${rating >= 4 ? '5' : '4'} authentic Google review options.
@@ -18,6 +20,8 @@ INSTRUCTIONS:
 - Match the ${rating}-star sentiment exactly.
 - Each review must be 1-3 sentences, max 40 words.
 - Make it sound like a real human wrote it, not a marketing team.
+- CRITICAL: Ensure these reviews are completely unique every time. Do not repeat standard examples.
+- Random Seed: ${randomSeed} (Use this to generate highly varied and unique situations for the reviews).
 
 Return ONLY a JSON array of strings. No markdown, no explanation.
 

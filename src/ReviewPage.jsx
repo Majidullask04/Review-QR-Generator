@@ -113,7 +113,10 @@ function getFallbackReviews(rating, businessName, type) {
   }
   
   const typeFallbacks = fallbacks[type] || fallbacks.restaurant
-  return typeFallbacks[rating] || typeFallbacks[3] || ['Good experience.', 'Nice place.']
+  const reviews = typeFallbacks[rating] || typeFallbacks[3] || ['Good experience.', 'Nice place.']
+  
+  // Shuffle the array and return up to 4 items so it's different every time
+  return [...reviews].sort(() => Math.random() - 0.5).slice(0, 4)
 }
 
 function StarRating({ rating, setRating, interactive = true }) {
