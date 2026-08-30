@@ -10,6 +10,7 @@ const stripControl = (v) =>
 
 export default async function handler(req, res) {
   try {
+    // ── CORS ──
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -17,7 +18,7 @@ export default async function handler(req, res) {
     if (req.method === 'OPTIONS') return res.status(204).end();
     if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-    // Parse body safely
+    // ── PARSE BODY SAFELY ──
     let body = {};
     try {
       if (typeof req.body === 'string') body = JSON.parse(req.body);
@@ -42,6 +43,7 @@ export default async function handler(req, res) {
       return res.status(503).json({ error: 'AI service not configured.' });
     }
 
+    // ── BUILD PROMPT ──
     const cleanName = stripControl(businessName.trim());
     const cleanType = stripControl((typeContext || businessType || 'local business').trim());
     const cleanCustomer = stripControl((customerContext || '').trim());
@@ -69,66 +71,77 @@ Business guidance: ${cleanGuidance || '(none provided)'}
 Return ONLY a JSON array of strings. No markdown, no explanation. Example: ["review one","review two"]`;
 
     const safeKey = encodeURIComponent(apiKey.trim());
-    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${safeKey}`;
+    const models = ['gemini-1.5-flash', 'gemini-1.5-flash-latest', 'gemini-2.0-flash'];
+    let lastError = null;
 
-    // Safety check for fetch
-    if (typeof fetch !== 'function') {
-      return res.status(500).json({ error: 'Runtime error: fetch not available.' });
-    }
-
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 8000);
-
-    let geminiRes;
-    try {
-      geminiRes = await fetch(geminiUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        signal: controller.signal,
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: {
-            temperature: 0.85,
-            maxOutputTokens: 1000
-          }
-        })
-      });
-    } finally {
-      clearTimeout(timeout);
-    }
-
-    if (!geminiRes.ok) {
-      const errText = await geminiRes.text().catch(() => 'Unknown');
-      console.error('Gemini HTTP error:', geminiRes.status, errText);
-      return res.status(502).json({ error: 'AI provider unavailable.' });
-    }
-
-    const geminiData = await geminiRes.json();
-    const rawText = geminiData.candidates?.[0]?.content?.parts?.[0]?.text || '';
-
-    let reviews = [];
-    if (rawText) {
+    for (const model of models) {
+      const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${safeKey}`;
       try {
-        const parsed = JSON.parse(rawText);
-        reviews = Array.isArray(parsed) 
-          ? parsed.filter(item => typeof item === 'string' && item.trim()).slice(0, 5)
-          : [];
-      } catch {
-        const match = rawText.match(/\[([\s\S]*?)\]/);
-        if (match) {
-          try {
-            reviews = JSON.parse(`[${match[1]}]`).filter(item => typeof item === 'string').slice(0, 5);
-          } catch { /* ignore */ }
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 8000);
+
+        const geminiRes = await fetch(geminiUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          signal: controller.signal,
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: {
+              temperature: 0.85,
+              maxOutputTokens: 1000
+            }
+          })
+        });
+
+        clearTimeout(timeout);
+
+        const responseText = await geminiRes.text();
+        console.log(`Gemini ${model} status:`, geminiRes.status);
+        console.log(`Gemini ${model} response:`, responseText.slice(0, 500));
+
+        if (!geminiRes.ok) {
+          lastError = `Model ${model} failed with ${geminiRes.status}: ${responseText.slice(0, 200)}`;
+          continue; // Try next model
         }
+
+        const geminiData = JSON.parse(responseText);
+        const rawText = geminiData.candidates?.[0]?.content?.parts?.[0]?.text || '';
+
+        let reviews = [];
+        if (rawText) {
+          try {
+            const parsed = JSON.parse(rawText);
+            reviews = Array.isArray(parsed)
+              ? parsed.filter(item => typeof item === 'string' && item.trim()).slice(0, 5)
+              : [];
+          } catch {
+            const match = rawText.match(/\[([\s\S]*?)\]/);
+            if (match) {
+              try {
+                reviews = JSON.parse(`[${match[1]}]`).filter(item => typeof item === 'string').slice(0, 5);
+              } catch { /* ignore */ }
+            }
+          }
+        }
+
+        if (reviews.length) {
+          return res.status(200).json({ reviews });
+        }
+
+        lastError = `Model ${model} returned empty reviews. Raw: ${rawText.slice(0, 200)}`;
+
+      } catch (fetchErr) {
+        lastError = `Model ${model} fetch error: ${fetchErr.message}`;
+        console.error(lastError);
       }
     }
 
-    if (!reviews.length) {
-      console.error('Empty reviews. Raw:', rawText.slice(0, 200));
-      return res.status(502).json({ error: 'AI returned empty response.' });
-    }
-
-    return res.status(200).json({ reviews });
+    // All models failed — return debug info so you can see why
+    console.error('All Gemini models failed. Last error:', lastError);
+    return res.status(502).json({
+      error: 'AI provider unavailable.',
+      debug: lastError
+    });
 
   } catch (err) {
     console.error('FATAL:', err.name, err.message);
