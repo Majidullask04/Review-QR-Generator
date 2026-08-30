@@ -9,7 +9,6 @@ const stripControl = (v) =>
     .join('');
 
 export default async function handler(req, res) {
-  // ── GLOBAL SAFETY NET ──
   try {
     // ── CORS ──
     res.setHeader('Access-Control-Allow-Origin', '*');
@@ -33,7 +32,7 @@ export default async function handler(req, res) {
 
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
-      console.error('CRITICAL: GEMINI_API_KEY is missing');
+      console.error('GEMINI_API_KEY missing');
       return res.status(503).json({ error: 'AI service not configured.' });
     }
 
@@ -68,7 +67,7 @@ Return ONLY a JSON array of strings. No markdown, no explanation.`;
     const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
 
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 8000); // ⬅️ 8s max (under Vercel 10s limit)
+    const timeout = setTimeout(() => controller.abort(), 8000);
 
     let geminiRes;
     try {
@@ -101,11 +100,11 @@ Return ONLY a JSON array of strings. No markdown, no explanation.`;
 
     const geminiData = await geminiRes.json();
     
-    // ── ROBUST PARSING ──
+    // ── Parse Response ──
     let reviews = [];
     let rawText = geminiData.candidates?.[0]?.content?.parts?.[0]?.text;
 
-    // Some Gemini versions return the JSON array directly when responseMimeType is set
+    // Some Gemini configs return array directly
     if (!rawText && Array.isArray(geminiData)) {
       reviews = geminiData.filter(item => typeof item === 'string').slice(0, 5);
     }
@@ -116,29 +115,25 @@ Return ONLY a JSON array of strings. No markdown, no explanation.`;
         reviews = Array.isArray(parsed) 
           ? parsed.filter(item => typeof item === 'string' && item.trim()).slice(0, 5)
           : [];
-      } catch (parseErr) {
+      } catch {
         const match = rawText.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
         if (match) {
           try {
-            const extracted = JSON.parse(match[1]);
-            reviews = Array.isArray(extracted) 
-              ? extracted.filter(item => typeof item === 'string').slice(0, 5)
-              : [];
+            reviews = JSON.parse(match[1]).filter(item => typeof item === 'string').slice(0, 5);
           } catch { /* ignore */ }
         }
       }
     }
 
     if (!reviews.length) {
-      console.error('Empty reviews. Gemini response:', JSON.stringify(geminiData).slice(0, 500));
+      console.error('Empty reviews. Response:', JSON.stringify(geminiData).slice(0, 300));
       return res.status(502).json({ error: 'AI returned empty response.' });
     }
 
     return res.status(200).json({ reviews });
 
   } catch (err) {
-    // ── THIS CATCH PREVENTS 502s ──
-    console.error('FATAL API ERROR:', err.name, err.message, err.stack);
-    return res.status(500).json({ error: 'Internal server error. Check logs.' });
+    console.error('FATAL:', err.name, err.message);
+    return res.status(500).json({ error: 'Server error. Check Vercel logs.' });
   }
 }
