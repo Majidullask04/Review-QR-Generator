@@ -26,7 +26,7 @@ const isGoogleReviewUrl = (value) => {
 }
 
 const generateReviews = async (rating, businessName, businessType, customerContext, businessGuidance) => {
-  const typeContext = TYPE_CONTEXTS[businessType] || TYPE_CONTEXTS.restaurant
+  const typeContext = TYPE_CONTEXTS[businessType] || TYPE_CONTEXTS.restaurant;
   
   const res = await fetch('/api/gemini', {
     method: 'POST',
@@ -39,20 +39,20 @@ const generateReviews = async (rating, businessName, businessType, customerConte
       customerContext,
       businessGuidance
     })
-  })
-  
+  });
+
   if (!res.ok) {
-    const err = await res.json().catch(() => ({}))
-    throw new Error(err.error || `API Error: ${res.status}`)
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || `API Error: ${res.status}`);
   }
+
+  const data = await res.json();
+  const reviews = data.reviews || [];
   
-  const data = await res.json()
-  // Now expects clean { reviews: [...] } from backend
-  const reviews = data.reviews || []
   return Array.isArray(reviews)
     ? reviews.filter((item) => typeof item === 'string' && item.trim()).slice(0, 5)
-    : []
-}
+    : [];
+};
 
 function StarRating({ rating, setRating, interactive = true }) {
   return (
