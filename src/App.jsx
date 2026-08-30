@@ -1,14 +1,24 @@
 import { useEffect, useState, useRef } from 'react'
 import QRCode from 'qrcode'
+import QRCodeStyling from 'qr-code-styling'
 import html2canvas from 'html2canvas'
 import { Link } from 'react-router-dom'
 import './App.css'
 
 const ALLOWED_DOMAINS = [
-  'google.com',
-  'g.page',
-  'search.google.com',
-  'business.google.com',
+  'google.com', 'g.page', 'search.google.com', 'business.google.com',
+]
+
+const BUSINESS_TYPES = [
+  { value: 'restaurant', label: 'Restaurant / Cafe' },
+  { value: 'salon', label: 'Salon / Barber / Spa' },
+  { value: 'gym', label: 'Gym / Fitness Center' },
+  { value: 'hotel', label: 'Hotel / Inn / B&B' },
+  { value: 'retail', label: 'Retail Shop / Store' },
+  { value: 'medical', label: 'Clinic / Hospital / Dental' },
+  { value: 'automotive', label: 'Auto Repair / Car Wash' },
+  { value: 'education', label: 'School / Tutoring / Classes' },
+  { value: 'other', label: 'Other Business' },
 ]
 
 const getValidationMessage = (value) => {
@@ -35,18 +45,46 @@ const getBusinessName = (value) => {
   }
 }
 
-const STORAGE_KEY = 'review-qr-history-v2'
+const STORAGE_KEY = 'review-qr-history-v3'
 
 function App() {
   const [inputUrl, setInputUrl] = useState('')
   const [businessName, setBusinessName] = useState('')
-  const [qrData, setQrData] = useState('')
+  const [businessType, setBusinessType] = useState('restaurant')
+  const [customType, setCustomType] = useState('')
+  const [qrData, setQrData] = useState('') // For history thumbnails
   const [qrLink, setQrLink] = useState('')
   const [error, setError] = useState('')
   const [isGenerating, setIsGenerating] = useState(false)
   const [copied, setCopied] = useState(false)
   const [history, setHistory] = useState([])
   const posterRef = useRef(null)
+  const qrRef = useRef(null)
+  
+  const [qrCodeStyling] = useState(new QRCodeStyling({
+    width: 220,
+    height: 220,
+    type: 'canvas',
+    margin: 5,
+    qrOptions: {
+      errorCorrectionLevel: 'L',
+    },
+    dotsOptions: {
+      color: '#000000',
+      type: 'dots' // Gives the rounded pixel look
+    },
+    cornersSquareOptions: {
+      type: 'extra-rounded',
+      color: '#000000',
+    },
+    cornersDotOptions: {
+      type: 'dot',
+      color: '#000000',
+    },
+    backgroundOptions: {
+      color: 'transparent'
+    }
+  }))
 
   useEffect(() => {
     try {
@@ -59,11 +97,24 @@ function App() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(history))
   }, [history])
 
+  // Update dotted QR canvas when qrLink changes
+  useEffect(() => {
+    if (qrLink && qrRef.current) {
+      qrCodeStyling.update({ data: qrLink })
+      qrRef.current.innerHTML = '' // Clear old canvas
+      qrCodeStyling.append(qrRef.current)
+    }
+  }, [qrLink, qrCodeStyling])
+
   const updateInput = (value) => {
     setInputUrl(value)
     setBusinessName(getBusinessName(value))
     if (!value.trim()) { setError(''); return }
     setError(getValidationMessage(value))
+  }
+
+  const getFinalBusinessType = () => {
+    return businessType === 'other' ? customType : businessType
   }
 
   const generateQr = async () => {
@@ -77,22 +128,25 @@ function App() {
     try {
       const businessId = btoa(trimmedUrl).replace(/[^a-zA-Z0-9]/g, '').slice(0, 12)
       const baseUrl = window.location.origin
-      const reviewFlowUrl = `${baseUrl}/review/${businessId}?target=${encodeURIComponent(trimmedUrl)}&name=${encodeURIComponent(businessName || getBusinessName(trimmedUrl))}`
+      const finalType = getFinalBusinessType()
+      
+      const reviewFlowUrl = `${baseUrl}/review/${businessId}?target=${encodeURIComponent(trimmedUrl)}&name=${encodeURIComponent(businessName || getBusinessName(trimmedUrl))}&type=${encodeURIComponent(finalType)}`
 
-      const dataUrl = await QRCode.toDataURL(reviewFlowUrl, {
-        width: 400,
-        margin: 2,
-        color: { dark: '#1a73e8', light: '#ffffff' },
+      // Generate a small basic QR for the history panel thumbnail
+      const thumbDataUrl = await QRCode.toDataURL(reviewFlowUrl, {
+        width: 100, margin: 1, color: { dark: '#000', light: '#fff' }
       })
 
-      setQrData(dataUrl)
+      setQrData(thumbDataUrl)
       setQrLink(reviewFlowUrl)
+      
       setHistory(prev => [{
         id: `${Date.now()}`,
         businessName: businessName || getBusinessName(trimmedUrl),
+        businessType: finalType,
         googleUrl: trimmedUrl,
         reviewFlowUrl,
-        qrDataUrl: dataUrl,
+        qrDataUrl: thumbDataUrl,
         createdAt: Date.now(),
       }, ...prev].slice(0, 10))
     } catch {
@@ -113,12 +167,12 @@ function App() {
   }
 
   const handleDownload = async () => {
-    if (!qrData || !posterRef.current) return
+    if (!qrLink || !posterRef.current) return
     try {
-      const canvas = await html2canvas(posterRef.current, { scale: 2, backgroundColor: null })
+      const canvas = await html2canvas(posterRef.current, { scale: 3, backgroundColor: null, useCORS: true })
       const link = document.createElement('a')
       link.href = canvas.toDataURL('image/png')
-      link.download = `${businessName || 'business'}-review-poster.png`
+      link.download = `${businessName || 'business'}-google-poster.png`
       link.click()
     } catch (err) {
       console.error('Download failed', err)
@@ -128,6 +182,7 @@ function App() {
   const handleHistorySelect = (item) => {
     setInputUrl(item.googleUrl)
     setBusinessName(item.businessName)
+    setBusinessType(item.businessType)
     setQrData(item.qrDataUrl)
     setQrLink(item.reviewFlowUrl)
     setError('')
@@ -137,11 +192,10 @@ function App() {
     <main className="page-shell">
       <section className="generator-card">
         <div className="hero-copy">
-          <p className="eyebrow">Review QR Generator v2</p>
+          <p className="eyebrow">Review QR Generator v4</p>
           <h1>AI-Powered Review QR Codes</h1>
           <p className="subtitle">
-            Customers scan → Rate with stars → Get AI-generated review → Post to Google.
-            No more blank-page anxiety.
+            Tell us your business type → AI writes realistic, specific reviews → Customers post with confidence.
           </p>
         </div>
 
@@ -158,13 +212,13 @@ function App() {
             />
             <div className="field-row">
               <span className="helper-text">Paste your Google Business review link</span>
-              <button type="button" className="link-button" onClick={() => updateInput('https://g.page/r/CW example')}>
+              <button type="button" className="link-button" onClick={() => updateInput('https://g.page/r/tonys-pizza/review')}>
                 Try sample
               </button>
             </div>
             {error && inputUrl && <p className="error-text">{error}</p>}
 
-            <label className="field-label" htmlFor="bizName" style={{marginTop: '16px'}}>Business Name (optional)</label>
+            <label className="field-label" htmlFor="bizName" style={{marginTop: '16px'}}>Business Name</label>
             <input
               id="bizName"
               type="text"
@@ -173,6 +227,31 @@ function App() {
               placeholder="e.g. Tony's Pizza"
               className="input"
             />
+
+            <label className="field-label" style={{marginTop: '16px'}}>What type of business is this?</label>
+            <div className="business-type-grid">
+              {BUSINESS_TYPES.map((type) => (
+                <button
+                  key={type.value}
+                  type="button"
+                  className={`type-card ${businessType === type.value ? 'selected' : ''}`}
+                  onClick={() => setBusinessType(type.value)}
+                >
+                  <span className="type-label">{type.label}</span>
+                </button>
+              ))}
+            </div>
+
+            {businessType === 'other' && (
+              <input
+                type="text"
+                value={customType}
+                onChange={(e) => setCustomType(e.target.value)}
+                placeholder="e.g. Pet Grooming, Yoga Studio, Law Firm..."
+                className="input"
+                style={{marginTop: '12px'}}
+              />
+            )}
 
             <div className="toolbar">
               <button type="button" className="primary-button" onClick={generateQr} disabled={isGenerating || !inputUrl.trim()}>
@@ -191,31 +270,60 @@ function App() {
                   <div className="spinner" />
                   <p>Creating smart QR...</p>
                 </div>
-              ) : qrData ? (
-                <div className="poster-container">
-                  <div className="poster" ref={posterRef}>
-                    <div className="poster-content">
-                      <h2 className="poster-header-text">Scan the QR code and<br/>please leave us a review on</h2>
-                      <div className="google-logo-wrap">
-                        <span className="google-g">G</span><span className="google-o1">o</span><span className="google-o2">o</span><span className="google-g2">g</span><span className="google-l">l</span><span className="google-e">e</span>
-                      </div>
-                      <div className="poster-stars">★★★★★</div>
-                      <div className="scan-me-text">scan me</div>
-                      <div className="qr-wrap">
-                        <img src={qrData} alt="Generated review QR code" className="poster-qr-image" />
-                      </div>
-                      <div className="thank-you-text">Thank you</div>
-                      <p className="visit-text">for your visit</p>
+              ) : qrLink ? (
+                <div className="google-poster-wrap">
+                  <div className="google-poster" ref={posterRef}>
+                    <div className="wave wave-top-right"></div>
+                    <div className="wave wave-bottom-left"></div>
+                    
+                    <div className="floating-icon icon-left">
+                      <img src="https://upload.wikimedia.org/wikipedia/commons/5/53/Google_%22G%22_Logo.svg" alt="Google" />
                     </div>
-                    <div className="poster-footer">
-                      <div className="footer-logo">
-                        <div className="logo-placeholder"></div>
-                        <div className="footer-brand">
-                          <span className="brand-title">YourBrand</span>
-                          <span className="brand-subtitle">connect to the world</span>
+                    <div className="floating-icon icon-right">
+                      <img src="https://upload.wikimedia.org/wikipedia/commons/a/aa/Google_Maps_icon_%282020%29.svg" alt="Google Maps" />
+                    </div>
+
+                    <div className="poster-content-g">
+                      <div className="feedback-badge">
+                        <span className="heart-icon">🤍</span> WE VALUE YOUR FEEDBACK
+                      </div>
+                      
+                      <div className="review-us-text">Review us on</div>
+                      <div className="google-logo-full">
+                        <span className="g-blue">G</span><span className="g-red">o</span><span className="g-yellow">o</span><span className="g-blue">g</span><span className="g-green">l</span><span className="g-red">e</span>
+                      </div>
+                      
+                      <div className="stars-row">
+                        <span>★</span><span>★</span><span>★</span><span>★</span><span>★</span>
+                      </div>
+                      <p className="feedback-subtitle">
+                        Your feedback helps us improve and<br/>helps others make the right choice.
+                      </p>
+
+                      <div className="qr-3d-container">
+                        <div className="scan-me-badge">
+                          <span className="scan-lines">↘</span> Scan me <span className="scan-lines">↙</span>
+                        </div>
+                        <div className="qr-code-canvas" ref={qrRef}></div>
+                      </div>
+                      
+                      <div className="thank-you-script">Thank you!</div>
+                      <div className="for-support">for your support</div>
+                    </div>
+                    
+                    <div className="google-footer">
+                      <div className="footer-business-info">
+                        <div className="gmb-icon">
+                          <img src="https://upload.wikimedia.org/wikipedia/commons/a/aa/Google_Maps_icon_%282020%29.svg" alt="GMB" />
+                        </div>
+                        <div className="b-details">
+                          <div className="b-name">{businessName || 'Your Business Name'}</div>
+                          <div className="b-tagline"><span className="pin">📍</span> Your Tagline Here</div>
                         </div>
                       </div>
-                      <div className="footer-website">www.yourwebsite.com</div>
+                      <div className="footer-website-g">
+                        🌐 www.yourwebsite.com
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -227,7 +335,7 @@ function App() {
               )}
             </div>
             <div className="preview-actions">
-              <button type="button" className="primary-button" onClick={handleDownload} disabled={!qrData}>Download PNG</button>
+              <button type="button" className="primary-button" onClick={handleDownload} disabled={!qrLink}>Download PNG</button>
               <button type="button" className="secondary-button" onClick={() => window.print()}>Print</button>
             </div>
           </div>
@@ -249,7 +357,7 @@ function App() {
                   <img src={item.qrDataUrl} alt={`${item.businessName} preview`} />
                   <div>
                     <strong>{item.businessName}</strong>
-                    <span>{new Date(item.createdAt).toLocaleDateString()}</span>
+                    <span>{item.businessType} • {new Date(item.createdAt).toLocaleDateString()}</span>
                   </div>
                 </button>
               ))}
