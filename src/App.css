@@ -399,3 +399,151 @@
   border-color: #9ca3af;
 }
 
+/* Poster Design CSS */
+.poster-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background-color: #f8fafc;
+  border-radius: 20px;
+  padding: 20px;
+}
+
+.poster {
+  width: 320px;
+  background-color: #ffffff;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+  font-family: 'Inter', sans-serif;
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+}
+
+.poster-content {
+  padding: 30px 20px 40px;
+  position: relative;
+  z-index: 2;
+}
+
+.poster-header-text {
+  font-size: 14px;
+  color: #1e3a8a;
+  margin: 0 0 10px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.google-logo-wrap {
+  font-size: 32px;
+  font-weight: 700;
+  letter-spacing: -1px;
+  margin-bottom: 5px;
+}
+
+.google-g { color: #4285F4; }
+.google-o1 { color: #EA4335; }
+.google-o2 { color: #FBBC05; }
+.google-g2 { color: #4285F4; }
+.google-l { color: #34A853; }
+.google-e { color: #EA4335; }
+
+.poster-stars {
+  color: #FBBC05;
+  font-size: 20px;
+  letter-spacing: 2px;
+  margin-bottom: 15px;
+}
+
+.scan-me-text {
+  font-family: 'Brush Script MT', 'Comic Sans MS', cursive;
+  color: #2563eb;
+  font-size: 24px;
+  margin-bottom: -15px;
+  position: relative;
+  z-index: 3;
+  transform: rotate(-5deg);
+}
+
+.qr-wrap {
+  background-color: #FACC15;
+  border-radius: 16px;
+  padding: 20px 20px 40px 20px;
+  margin: 0 10px;
+  border-bottom: 15px solid #EAB308;
+}
+
+.poster-qr-image {
+  width: 100%;
+  border-radius: 12px;
+  background: white;
+  padding: 10px;
+  box-sizing: border-box;
+}
+
+.thank-you-text {
+  font-family: 'Brush Script MT', 'Comic Sans MS', cursive;
+  font-size: 42px;
+  color: #1e40af;
+  margin-top: -30px;
+  line-height: 1;
+  position: relative;
+  z-index: 3;
+}
+
+.visit-text {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1e3a8a;
+  margin: 5px 0 0;
+}
+
+.poster-footer {
+  background-color: #2563eb;
+  color: white;
+  padding: 25px 20px 15px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-radius: 100% 100% 0 0 / 25px 25px 0 0;
+  margin-top: -20px;
+  position: relative;
+  z-index: 1;
+}
+
+.footer-logo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.logo-placeholder {
+  width: 32px;
+  height: 32px;
+  background: linear-gradient(135deg, #fb923c, #ec4899, #3b82f6);
+  border-radius: 50%;
+  border: 2px solid white;
+}
+
+.footer-brand {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.brand-title {
+  font-weight: 700;
+  font-size: 12px;
+  line-height: 1.1;
+}
+
+.brand-subtitle {
+  font-size: 8px;
+  opacity: 0.8;
+}
+
+.footer-website {
+  font-size: 10px;
+  font-weight: 500;
+}

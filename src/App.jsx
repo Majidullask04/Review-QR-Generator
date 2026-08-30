@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import QRCode from 'qrcode'
+import html2canvas from 'html2canvas'
 import { Link } from 'react-router-dom'
 import './App.css'
 
@@ -45,6 +46,7 @@ function App() {
   const [isGenerating, setIsGenerating] = useState(false)
   const [copied, setCopied] = useState(false)
   const [history, setHistory] = useState([])
+  const posterRef = useRef(null)
 
   useEffect(() => {
     try {
@@ -110,12 +112,17 @@ function App() {
     } catch { setCopied(false) }
   }
 
-  const handleDownload = () => {
-    if (!qrData) return
-    const link = document.createElement('a')
-    link.href = qrData
-    link.download = `${businessName || 'business'}-review-qr.png`
-    link.click()
+  const handleDownload = async () => {
+    if (!qrData || !posterRef.current) return
+    try {
+      const canvas = await html2canvas(posterRef.current, { scale: 2, backgroundColor: null })
+      const link = document.createElement('a')
+      link.href = canvas.toDataURL('image/png')
+      link.download = `${businessName || 'business'}-review-poster.png`
+      link.click()
+    } catch (err) {
+      console.error('Download failed', err)
+    }
   }
 
   const handleHistorySelect = (item) => {
@@ -185,10 +192,33 @@ function App() {
                   <p>Creating smart QR...</p>
                 </div>
               ) : qrData ? (
-                <>
-                  <img src={qrData} alt="Generated review QR code" className="qr-image" />
-                  <p className="qr-caption">Scans open AI review helper</p>
-                </>
+                <div className="poster-container">
+                  <div className="poster" ref={posterRef}>
+                    <div className="poster-content">
+                      <h2 className="poster-header-text">Scan the QR code and<br/>please leave us a review on</h2>
+                      <div className="google-logo-wrap">
+                        <span className="google-g">G</span><span className="google-o1">o</span><span className="google-o2">o</span><span className="google-g2">g</span><span className="google-l">l</span><span className="google-e">e</span>
+                      </div>
+                      <div className="poster-stars">★★★★★</div>
+                      <div className="scan-me-text">scan me</div>
+                      <div className="qr-wrap">
+                        <img src={qrData} alt="Generated review QR code" className="poster-qr-image" />
+                      </div>
+                      <div className="thank-you-text">Thank you</div>
+                      <p className="visit-text">for your visit</p>
+                    </div>
+                    <div className="poster-footer">
+                      <div className="footer-logo">
+                        <div className="logo-placeholder"></div>
+                        <div className="footer-brand">
+                          <span className="brand-title">YourBrand</span>
+                          <span className="brand-subtitle">connect to the world</span>
+                        </div>
+                      </div>
+                      <div className="footer-website">www.yourwebsite.com</div>
+                    </div>
+                  </div>
+                </div>
               ) : (
                 <div className="empty-state">
                   <div className="placeholder-qr" aria-hidden="true" />

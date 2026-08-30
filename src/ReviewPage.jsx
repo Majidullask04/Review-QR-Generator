@@ -2,23 +2,16 @@ import { useState, useEffect } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
 import './ReviewPage.css'
 
-const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY
-
 const generateReviews = async (rating, businessName) => {
-  const prompt = `Generate ${rating >= 4 ? '5' : '4'} short, authentic Google review options for a restaurant called "${businessName || 'this restaurant'}". 
-The customer gave ${rating} out of 5 stars.
-Each review must be 1-2 sentences, sound like a real person wrote it (casual, slightly imperfect grammar is OK), and match the ${rating}-star sentiment.
-Return ONLY a JSON array of strings. No markdown, no explanation. Example: ["Great food!","Loved the ambiance."]`
-
   try {
-    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`, {
+    const res = await fetch('/api/gemini', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { temperature: 0.8, maxOutputTokens: 500 }
-      })
+      body: JSON.stringify({ rating, businessName })
     })
+    if (!res.ok) {
+      throw new Error(`API Error: ${res.status} ${res.statusText}`);
+    }
     const data = await res.json()
     const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '[]'
     // Extract JSON array from response
