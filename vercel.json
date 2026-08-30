@@ -1,6 +1,5 @@
 {
   "rewrites": [
-    { "source": "/api/gemini", "destination": "/api/gemini.js" },
     { "source": "/review/:path*", "destination": "/index.html" },
     { "source": "/((?!api/).*)", "destination": "/index.html" }
   ],
@@ -10,6 +9,7 @@
       "headers": [
         { "key": "Access-Control-Allow-Origin", "value": "*" },
         { "key": "Access-Control-Allow-Methods", "value": "POST, OPTIONS" },
+        { "key": "Access-Control-Allow-Headers", "value": "Content-Type" },
         { "key": "Cache-Control", "value": "no-store" }
       ]
     }
