@@ -55,6 +55,7 @@ function App() {
   const [businessType, setBusinessType] = useState('restaurant')
   const [customType, setCustomType] = useState('')
   const [reviewGuidance, setReviewGuidance] = useState('')
+  const [locationAbout, setLocationAbout] = useState('')
   const [qrLink, setQrLink] = useState('')
   const [error, setError] = useState('')
   const [isGenerating, setIsGenerating] = useState(false)
@@ -66,7 +67,6 @@ function App() {
 
   const qrCodeStylingRef = useRef(null)
 
-  // Lazy-init QRCodeStyling once
   useEffect(() => {
     qrCodeStylingRef.current = new QRCodeStyling({
       width: 220,
@@ -90,11 +90,10 @@ function App() {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(history))
     } catch {
-      // Storage full or disabled — non-critical
+      // Storage full or disabled
     }
   }, [history])
 
-  // Update dotted QR canvas when qrLink changes
   useEffect(() => {
     if (qrLink && qrRef.current && qrCodeStylingRef.current) {
       qrCodeStylingRef.current.update({ data: qrLink })
@@ -129,7 +128,7 @@ function App() {
       const finalType = getFinalBusinessType()
       const safeBusinessName = businessName.trim().slice(0, 120)
       
-      const reviewFlowUrl = `${baseUrl}/review/${businessId}?target=${encodeURIComponent(trimmedUrl)}&name=${encodeURIComponent(safeBusinessName)}&type=${encodeURIComponent(finalType)}&guidance=${encodeURIComponent(reviewGuidance.trim().slice(0, 500))}`
+      const reviewFlowUrl = `${baseUrl}/review/${businessId}?target=${encodeURIComponent(trimmedUrl)}&name=${encodeURIComponent(safeBusinessName)}&type=${encodeURIComponent(finalType)}&guidance=${encodeURIComponent(reviewGuidance.trim().slice(0, 500))}&about=${encodeURIComponent(locationAbout.trim().slice(0, 300))}`
 
       const thumbDataUrl = await QRCode.toDataURL(reviewFlowUrl, {
         width: 100, margin: 1, color: { dark: '#000', light: '#fff' }
@@ -145,6 +144,7 @@ function App() {
         googleUrl: trimmedUrl,
         reviewFlowUrl,
         qrDataUrl: thumbDataUrl,
+        locationAbout: locationAbout.trim().slice(0, 300),
         createdAt: Date.now(),
       }, ...prev].slice(0, MAX_HISTORY_ITEMS))
     } catch {
@@ -152,7 +152,7 @@ function App() {
     } finally {
       setIsGenerating(false)
     }
-  }, [inputUrl, businessName, businessType, customType, reviewGuidance, getFinalBusinessType])
+  }, [inputUrl, businessName, businessType, customType, reviewGuidance, locationAbout, getFinalBusinessType])
 
   const copyUrl = useCallback(async () => {
     if (!qrLink) return
@@ -193,8 +193,8 @@ function App() {
   const handleHistorySelect = useCallback((item) => {
     setInputUrl(item.googleUrl)
     setBusinessName(item.businessName)
-    setReviewGuidance('') // guidance isn't stored in history; user can re-enter
-    // Restore business type correctly
+    setReviewGuidance('')
+    setLocationAbout(item.locationAbout || '')
     const isKnownType = BUSINESS_TYPES.some(t => t.value === item.businessType && t.value !== 'other')
     if (isKnownType) {
       setBusinessType(item.businessType)
@@ -250,6 +250,22 @@ function App() {
               className="input"
             />
             <p className="field-note">Enter this manually so short Google links cannot fill in the wrong name.</p>
+
+            <label className="field-label" htmlFor="locationAbout" style={{marginTop: '16px'}}>
+              What is this location about?
+            </label>
+            <textarea
+              id="locationAbout"
+              value={locationAbout}
+              onChange={(e) => setLocationAbout(e.target.value.slice(0, 300))}
+              placeholder="e.g. We are a family-run cafe known for filter coffee, crispy dosas, and fast service. Mention our weekend brunch or Maya at the counter."
+              className="input guidance-input"
+              rows={3}
+              maxLength={300}
+            />
+            <p className="field-note">
+              This helps the AI write accurate, location-specific reviews. Customers will see this context too.
+            </p>
 
             <label className="field-label" style={{marginTop: '16px'}}>What type of business is this?</label>
             <div className="business-type-grid" role="radiogroup" aria-label="Business type">

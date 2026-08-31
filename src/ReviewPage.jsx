@@ -25,7 +25,7 @@ const isGoogleReviewUrl = (value) => {
   }
 }
 
-const generateReviews = async (rating, businessName, businessType, customerContext, businessGuidance) => {
+const generateReviews = async (rating, businessName, businessType, customerContext, businessGuidance, locationAbout) => {
   const typeContext = TYPE_CONTEXTS[businessType] || TYPE_CONTEXTS.restaurant;
   
   const res = await fetch('/api/gemini', {
@@ -37,7 +37,8 @@ const generateReviews = async (rating, businessName, businessType, customerConte
       businessType,
       typeContext,
       customerContext,
-      businessGuidance
+      businessGuidance,
+      locationAbout
     })
   });
 
@@ -81,6 +82,7 @@ export default function ReviewPage() {
   const businessName = searchParams.get('name') || 'this business'
   const businessType = searchParams.get('type') || 'restaurant'
   const businessGuidance = searchParams.get('guidance') || ''
+  const locationAbout = searchParams.get('about') || ''
   const hasValidTarget = isGoogleReviewUrl(targetUrl)
 
   const [step, setStep] = useState(1)
@@ -92,7 +94,6 @@ export default function ReviewPage() {
   const [error, setError] = useState('')
   const [customerContext, setCustomerContext] = useState('')
 
-  // Validate on mount
   useEffect(() => {
     if (!hasValidTarget && targetUrl) {
       setError('Invalid review link. Please scan a valid QR code.')
@@ -118,7 +119,7 @@ export default function ReviewPage() {
     setLoading(true)
     setError('')
     try {
-      const generated = await generateReviews(stars, businessName, businessType, customerContext, businessGuidance)
+      const generated = await generateReviews(stars, businessName, businessType, customerContext, businessGuidance, locationAbout)
       if (!generated.length) throw new Error('No review options returned')
       setReviews(generated)
       setStep(2)
@@ -127,7 +128,7 @@ export default function ReviewPage() {
     } finally {
       setLoading(false)
     }
-  }, [hasValidTarget, businessName, businessType, customerContext, businessGuidance])
+  }, [hasValidTarget, businessName, businessType, customerContext, businessGuidance, locationAbout])
 
   const handleSelectReview = useCallback((review) => {
     setSelectedReview(review)
@@ -137,7 +138,6 @@ export default function ReviewPage() {
   const copyAndRedirect = useCallback(async () => {
     if (!hasValidTarget || !selectedReview) return
     
-    // Try clipboard first, then open window to avoid popup blockers
     let clipboardSuccess = false
     try {
       await navigator.clipboard.writeText(selectedReview)
@@ -147,7 +147,6 @@ export default function ReviewPage() {
       clipboardSuccess = false
     }
     
-    // Open Google Reviews
     const openReview = () => {
       window.open(targetUrl, '_blank', 'noopener,noreferrer')
     }
@@ -155,7 +154,6 @@ export default function ReviewPage() {
     if (clipboardSuccess) {
       openReview()
     } else {
-      // If clipboard failed, still open the review page so user can manually paste
       openReview()
       setError('Could not auto-copy. Please copy the review manually.')
     }

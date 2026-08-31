@@ -1,5 +1,3 @@
-// api/gemini.js
-
 const stripControl = (v) =>
   [...(v || '')]
     .filter((c) => {
@@ -28,7 +26,7 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Invalid JSON body.' });
     }
 
-    const { rating, businessName, businessType, typeContext, customerContext, businessGuidance } = body;
+    const { rating, businessName, businessType, typeContext, customerContext, businessGuidance, locationAbout } = body;
     const numericRating = Number(rating);
 
     if (!Number.isInteger(numericRating) || numericRating < 1 || numericRating > 5) {
@@ -48,27 +46,38 @@ export default async function handler(req, res) {
     const cleanType = stripControl((typeContext || businessType || 'local business').trim());
     const cleanCustomer = stripControl((customerContext || '').trim());
     const cleanGuidance = stripControl((businessGuidance || '').trim());
+    const cleanAbout = stripControl((locationAbout || '').trim());
 
-    const prompt = `You are helping a customer draft a review for the business named below.
+    const sentiment = numericRating >= 4 ? 'positive' : numericRating === 3 ? 'neutral/mixed' : 'negative';
+    const toneInstruction = numericRating >= 4
+      ? 'Be enthusiastic but not over-the-top. Use words like "loved", "definitely", "highly recommend", "go-to".'
+      : numericRating === 3
+      ? 'Be balanced. Mention both positives and things that could improve. Use words like "decent", "okay", "could be better", "average".'
+      : 'Be honest but not rude. Explain what went wrong specifically. Use words like "disappointed", "unfortunately", "expected better", "issue with".';
 
-Write ${numericRating >= 4 ? '5' : '4'} authentic Google review drafts.
+    const prompt = `You are helping a real customer write a Google review for a real business.
 
-INSTRUCTIONS:
-- The customer gave ${numericRating} out of 5 stars.
-- Write in a casual, conversational tone.
-- Use specific details ONLY from the notes below. Never invent facts.
-- Use imperfect grammar and casual language.
-- NEVER use generic phrases like "great experience" without SPECIFIC reasons.
-- Match the ${numericRating}-star sentiment exactly.
-- Each review must be 1-3 sentences, max 40 words.
-- Do not mention that AI helped write it.
+Write ${numericRating >= 4 ? '5' : '4'} DIFFERENT review drafts. Each one must sound like it was written by a different real person.
+
+CRITICAL RULES:
+- The customer gave ${numericRating} out of 5 stars. Match this sentiment exactly.
+- Write like a real human on a phone — short, casual, slightly imperfect grammar, conversational.
+- NEVER use generic filler like "great experience", "amazing service", or "highly recommend" WITHOUT explaining WHY.
+- Use ONLY facts from the "About this place" and "Customer notes" sections below. NEVER invent staff names, dishes, or details not provided.
+- Vary the opening words for each draft. Some start with the business name, some with "Went to", "Tried", "Visited", "Just had", "Stopped by", etc.
+- Each review must be 1-3 sentences, max 45 words.
+- Do not mention AI, drafts, or that someone helped write it.
+- Make them feel like real Google reviews people actually post.
+
+${toneInstruction}
 
 Business name: ${cleanName}
 Business type: ${cleanType}
+About this place: ${cleanAbout || '(not provided)'}
 Customer notes: ${cleanCustomer || '(none provided)'}
 Business guidance: ${cleanGuidance || '(none provided)'}
 
-Return ONLY a JSON array of strings. No markdown, no explanation. Example: ["review one","review two"]`;
+Return ONLY a JSON array of strings. No markdown, no explanation. Example: ["review one","review two","review three"]`;
 
     const safeKey = encodeURIComponent(apiKey.trim());
     const models = ['gemini-1.5-flash', 'gemini-1.5-flash-latest', 'gemini-2.0-flash'];
@@ -87,8 +96,8 @@ Return ONLY a JSON array of strings. No markdown, no explanation. Example: ["rev
           body: JSON.stringify({
             contents: [{ parts: [{ text: prompt }] }],
             generationConfig: {
-              temperature: 0.85,
-              maxOutputTokens: 1000
+              temperature: 0.9,
+              maxOutputTokens: 1200
             }
           })
         });
@@ -101,7 +110,7 @@ Return ONLY a JSON array of strings. No markdown, no explanation. Example: ["rev
 
         if (!geminiRes.ok) {
           lastError = `Model ${model} failed with ${geminiRes.status}: ${responseText.slice(0, 200)}`;
-          continue; // Try next model
+          continue;
         }
 
         const geminiData = JSON.parse(responseText);
@@ -136,7 +145,6 @@ Return ONLY a JSON array of strings. No markdown, no explanation. Example: ["rev
       }
     }
 
-    // All models failed — return debug info so you can see why
     console.error('All Gemini models failed. Last error:', lastError);
     return res.status(502).json({
       error: 'AI provider unavailable.',
