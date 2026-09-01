@@ -110,16 +110,24 @@ export default function ReviewPage() {
     }
   }, [selectedReview])
 
-  const handleRate = useCallback(async (stars) => {
+  const handleRate = useCallback((stars) => {
+    setRating(stars)
+    setError('')
+  }, [])
+
+  const handleGenerateReview = useCallback(async () => {
     if (!hasValidTarget) {
       setError('Cannot generate review: invalid business link.')
       return
     }
-    setRating(stars)
+    if (rating === 0) {
+      setError('Please select a star rating first.')
+      return
+    }
     setLoading(true)
     setError('')
     try {
-      const generated = await generateReviews(stars, businessName, businessType, customerContext, businessGuidance, locationAbout)
+      const generated = await generateReviews(rating, businessName, businessType, customerContext, businessGuidance, locationAbout)
       if (!generated.length) throw new Error('No review options returned')
       setReviews(generated)
       setStep(2)
@@ -128,7 +136,15 @@ export default function ReviewPage() {
     } finally {
       setLoading(false)
     }
-  }, [hasValidTarget, businessName, businessType, customerContext, businessGuidance, locationAbout])
+  }, [hasValidTarget, rating, businessName, businessType, customerContext, businessGuidance, locationAbout])
+
+  const handleDirectRedirect = useCallback(() => {
+    if (hasValidTarget && targetUrl) {
+      window.open(targetUrl, '_blank', 'noopener,noreferrer')
+    } else {
+      setError('Invalid business link.')
+    }
+  }, [hasValidTarget, targetUrl])
 
   const handleSelectReview = useCallback((review) => {
     setSelectedReview(review)
@@ -204,6 +220,22 @@ export default function ReviewPage() {
               placeholder="e.g. I tried the ramen, our server was Sam, and the wait was about 10 minutes"
             />
             <p className="truth-note">The AI only uses details you provide. Please review and edit the draft so it reflects your real experience.</p>
+            
+            <div className="action-buttons" style={{ marginTop: '24px' }}>
+              <button 
+                className="primary-button" 
+                onClick={handleGenerateReview} 
+                disabled={loading || rating === 0}
+              >
+                {loading ? 'Generating...' : '✨ Generate AI Review'}
+              </button>
+              <button 
+                className="secondary-button" 
+                onClick={handleDirectRedirect}
+              >
+                Write Directly on Google
+              </button>
+            </div>
             {loading && (
               <div className="loading-state">
                 <div className="spinner small" />
