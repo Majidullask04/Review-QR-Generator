@@ -207,19 +207,7 @@ export default function ReviewPage() {
                 {rating === 5 ? 'Excellent!' : rating === 4 ? 'Very Good' : rating === 3 ? 'Good' : rating === 2 ? 'Fair' : 'Poor'}
               </p>
             )}
-            <label className="context-label" htmlFor="customerContext">
-              What would you like to mention? <span>Optional, but makes the draft more personal</span>
-            </label>
-            <textarea
-              id="customerContext"
-              className="experience-input"
-              rows={4}
-              maxLength={600}
-              value={customerContext}
-              onChange={(e) => setCustomerContext(e.target.value.slice(0, 600))}
-              placeholder="e.g. I tried the ramen, our server was Sam, and the wait was about 10 minutes"
-            />
-            <p className="truth-note">The AI only uses details you provide. Please review and edit the draft so it reflects your real experience.</p>
+
             
             <div className="action-buttons" style={{ marginTop: '24px' }}>
               <button 
